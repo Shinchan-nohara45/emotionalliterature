@@ -11,6 +11,9 @@ venv/
 # Env files
 .env
 
+# Backend env (should not be committed)
+backend/.env
+
 # Bytecode
 __pycache__/
 
