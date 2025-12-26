@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom slider styles */
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].slider::-webkit-slider-track {
+  background: #f3e8ff;
+  height: 8px;
+  border-radius: 4px;
+}
+
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ec4899;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"].slider::-moz-range-track {
+  background: #f3e8ff;
+  height: 8px;
+  border-radius: 4px;
+}
+
+input[type="range"].slider::-moz-range-thumb {
+  background: #ec4899;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+

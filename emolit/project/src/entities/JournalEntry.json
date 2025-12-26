@@ -1,0 +1,48 @@
+{
+  "name": "JournalEntry",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the journal entry"
+    },
+    "primary_emotion": {
+      "type": "string",
+      "description": "Main emotion felt"
+    },
+    "secondary_emotions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional emotions experienced"
+    },
+    "intensity": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Emotional intensity from 1-10"
+    },
+    "context": {
+      "type": "string",
+      "description": "What triggered this emotion"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional reflections"
+    },
+    "learned_words": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "New emotion words discovered today"
+    }
+  },
+  "required": [
+    "date",
+    "primary_emotion",
+    "intensity"
+  ]
+}

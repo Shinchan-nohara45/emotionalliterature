@@ -1,0 +1,54 @@
+{
+  "name": "UserProgress",
+  "type": "object",
+  "properties": {
+    "words_learned": {
+      "type": "number",
+      "default": 0,
+      "description": "Total emotion words learned"
+    },
+    "current_streak": {
+      "type": "number",
+      "default": 0,
+      "description": "Current daily learning streak"
+    },
+    "longest_streak": {
+      "type": "number",
+      "default": 0,
+      "description": "Longest learning streak achieved"
+    },
+    "level": {
+      "type": "number",
+      "default": 1,
+      "description": "Current learning level"
+    },
+    "experience_points": {
+      "type": "number",
+      "default": 0,
+      "description": "Total XP earned"
+    },
+    "badges_earned": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Achievement badges collected"
+    },
+    "quiz_score": {
+      "type": "number",
+      "default": 0,
+      "description": "Average quiz performance percentage"
+    },
+    "daily_goal": {
+      "type": "number",
+      "default": 1,
+      "description": "Daily learning goal (words per day)"
+    },
+    "last_activity_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last date user was active"
+    }
+  },
+  "required": []
+}
