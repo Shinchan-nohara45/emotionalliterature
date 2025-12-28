@@ -1,85 +1,134 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authAPI, getToken } from '../services/api';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import {
+  authAPI,
+  getToken,
+  subscribeToAuthInvalidation,
+} from "../services/api";
 
 const AuthContext = createContext(null);
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth must be used within AuthProvider");
   }
-  return context;
+  return ctx;
 };
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [profileCompleted, setProfileCompleted] = useState(false);
+  const [loading, setLoading] = useState(true);
 
+  /* ===============================
+     Boot-time auth check
+  ================================ */
   useEffect(() => {
-    // Check if user is already logged in
     checkAuth();
+
+    const unsubscribe = subscribeToAuthInvalidation(() => {
+      clearAuthState();
+    });
+
+    return unsubscribe;
   }, []);
+
+  const clearAuthState = () => {
+    setUser(null);
+    setIsAuthenticated(false);
+    setProfileCompleted(false);
+  };
+
+  const hydrateUser = (userData) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+    setProfileCompleted(Boolean(userData?.profile_completed));
+  };
 
   const checkAuth = async () => {
     const token = await getToken();
-    if (token) {
-      try {
-        const userData = await authAPI.getCurrentUser();
-        setUser(userData);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        setIsAuthenticated(false);
-        setUser(null);
-      }
+
+    if (!token) {
+      clearAuthState();
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    try {
+      const userData = await authAPI.getCurrentUser();
+      hydrateUser(userData);
+    } catch {
+      clearAuthState();
+    } finally {
+      setLoading(false);
+    }
   };
 
+  /* ===============================
+     Login
+  ================================ */
   const login = async (email, password) => {
     try {
-      const response = await authAPI.login(email, password);
+      const result = await authAPI.login(email, password);
+
+      if (!result.success) {
+        return {
+          success: false,
+          error:
+            result.reason === "TOKEN_STORAGE_FAILED"
+              ? "Unable to store session securely"
+              : "Login failed",
+        };
+      }
+
       const userData = await authAPI.getCurrentUser();
-      setUser(userData);
-      setIsAuthenticated(true);
+      hydrateUser(userData);
+
       return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message };
+    } catch (err) {
+      clearAuthState();
+      return { success: false, error: err.message };
     }
   };
 
+  /* ===============================
+     Register
+  ================================ */
   const register = async (email, password, fullName) => {
     try {
       await authAPI.register(email, password, fullName);
-      // After registration, log in the user
       return await login(email, password);
-    } catch (error) {
-      return { success: false, error: error.message };
+    } catch (err) {
+      return { success: false, error: err.message };
     }
   };
 
+  /* ===============================
+     Logout
+  ================================ */
   const logout = async () => {
     try {
       await authAPI.logout();
-    } catch (error) {
-      console.error('Logout error:', error);
     } finally {
-      setUser(null);
-      setIsAuthenticated(false);
+      clearAuthState();
     }
   };
 
-  const value = {
-    user,
-    loading,
-    isAuthenticated,
-    login,
-    register,
-    logout,
-    checkAuth,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated,
+        profileCompleted,
+        loading,
+        login,
+        register,
+        logout,
+        checkAuth,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
-

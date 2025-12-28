@@ -1,98 +1,119 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 
-// Use localhost for iOS simulator, 10.0.2.2 for Android emulator, or your actual IP for physical device
-const API_BASE_URL = "http://10.1.47.131:8000"; // Updated to your local IP for physical device support
-// const API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
+/* ===============================
+   Base URL resolution
+================================ */
+const FALLBACK_LOCAL_IP = "10.1.47.131";
 
-// Helper function to get auth token from AsyncStorage
-const getToken = async () => {
+const API_BASE_URL =
+  Platform.OS === "android"
+    ? "http://10.0.2.2:8000"
+    : Platform.OS === "ios"
+    ? "http://localhost:8000"
+    : `http://${FALLBACK_LOCAL_IP}:8000`;
+
+/* ===============================
+   Auth token storage
+================================ */
+const TOKEN_KEY = "auth_token";
+
+export const getToken = async () => {
   try {
-    return await AsyncStorage.getItem("auth_token");
-  } catch (error) {
-    console.error("Error getting token:", error);
+    return await AsyncStorage.getItem(TOKEN_KEY);
+  } catch {
     return null;
   }
 };
 
-// Helper function to set auth token
 const setToken = async (token) => {
   try {
-    await AsyncStorage.setItem("auth_token", token);
-  } catch (error) {
-    console.error("Error setting token:", error);
+    await AsyncStorage.setItem(TOKEN_KEY, token);
+    const stored = await AsyncStorage.getItem(TOKEN_KEY);
+    return stored === token;
+  } catch {
+    return false;
   }
 };
 
-// Helper function to remove auth token
 const removeToken = async () => {
   try {
-    await AsyncStorage.removeItem("auth_token");
-  } catch (error) {
-    console.error("Error removing token:", error);
-  }
+    await AsyncStorage.removeItem(TOKEN_KEY);
+  } catch {}
 };
 
-// Helper function to make API requests
+/* ===============================
+   Auth invalidation listeners
+================================ */
+let authInvalidationSubscribers = [];
+
+export const subscribeToAuthInvalidation = (callback) => {
+  authInvalidationSubscribers.push(callback);
+  return () => {
+    authInvalidationSubscribers =
+      authInvalidationSubscribers.filter((cb) => cb !== callback);
+  };
+};
+
+const notifyAuthInvalidation = () => {
+  authInvalidationSubscribers.forEach((cb) => cb());
+};
+
+/* ===============================
+   Core API request helper
+================================ */
 const apiRequest = async (endpoint, options = {}) => {
   const token = await getToken();
+
   const headers = {
     "Content-Type": "application/json",
-    ...options.headers,
+    ...(options.headers || {}),
   };
 
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
 
-  const config = {
-    ...options,
-    headers,
-  };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...config,
+      ...options,
+      headers,
       signal: controller.signal,
     });
 
     clearTimeout(timeoutId);
 
     if (response.status === 401) {
-      // Unauthorized - remove token
       await removeToken();
-      throw new Error("Unauthorized");
+      notifyAuthInvalidation();
+      throw new Error("SESSION_EXPIRED");
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorDetail;
+      const text = await response.text();
+      let message = text;
       try {
-        const errorJson = JSON.parse(errorText);
-        errorDetail = errorJson.detail || errorJson.message;
-      } catch (e) {
-        errorDetail = errorText;
-      }
-      console.error("API Error:", response.status, errorDetail);
-      throw new Error(
-        errorDetail || `Request failed with status ${response.status}`
-      );
+        message = JSON.parse(text)?.detail || text;
+      } catch {}
+      throw new Error(message);
     }
 
     return await response.json();
-  } catch (error) {
-    console.error("API request error:", error);
-    throw error;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
   }
 };
 
-// Auth API
+/* ===============================
+   Auth API
+================================ */
 export const authAPI = {
   register: async (email, password, fullName) => {
-    const response = await apiRequest("/api/auth/register", {
+    return apiRequest("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({
         email,
@@ -100,131 +121,78 @@ export const authAPI = {
         full_name: fullName,
       }),
     });
-    return response;
   },
 
   login: async (email, password) => {
     const response = await apiRequest("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({
-        email,
-        password,
-      }),
+      body: JSON.stringify({ email, password }),
     });
 
-    if (response.access_token) {
-      await setToken(response.access_token);
+    if (!response?.access_token) {
+      return { success: false, reason: "NO_TOKEN_RETURNED" };
     }
 
-    return response;
+    const stored = await setToken(response.access_token);
+
+    if (!stored) {
+      return { success: false, reason: "TOKEN_STORAGE_FAILED" };
+    }
+
+    return { success: true };
   },
 
   logout: async () => {
     await removeToken();
-    await apiRequest("/api/auth/logout", {
-      method: "POST",
-    });
+    notifyAuthInvalidation();
+    try {
+      await apiRequest("/api/auth/logout", { method: "POST" });
+    } catch {}
   },
 
   getCurrentUser: async () => {
-    return await apiRequest("/api/auth/me");
+    return apiRequest("/api/auth/me");
   },
 };
 
-// Journal API
+/* ===============================
+   Domain APIs (unchanged)
+================================ */
 export const journalAPI = {
-  createEntry: async (entry) => {
-    return await apiRequest("/api/journal/entries", {
+  createEntry: (entry) =>
+    apiRequest("/api/journal/entries", {
       method: "POST",
       body: JSON.stringify(entry),
-    });
-  },
+    }),
 
-  getEntries: async (skip = 0, limit = 10) => {
-    return await apiRequest(`/api/journal/entries?skip=${skip}&limit=${limit}`);
-  },
-
-  analyzeVoice: async (
-    audioFile,
-    targetLanguage = null,
-    generateAudio = false
-  ) => {
-    const formData = new FormData();
-    formData.append("audio", {
-      uri: audioFile.uri,
-      type: audioFile.type || "audio/m4a",
-      name: audioFile.name || "recording.m4a",
-    });
-
-    // Add optional parameters to query string
-    let queryParams = [];
-    if (targetLanguage) queryParams.push(`target_language=${targetLanguage}`);
-    if (generateAudio) queryParams.push(`generate_audio=${true}`);
-
-    const queryString =
-      queryParams.length > 0 ? `?${queryParams.join("&")}` : "";
-
-    const token = await getToken();
-    const headers = {
-      "Content-Type": "multipart/form-data", // Fetch usually sets this automatically with boundary for FormData
-    };
-    // Note: When using FormData with fetch in React Native, usually you should NOT set Content-Type manually
-    // to allow it to set the boundary. But let's see.
-    // The previous code had empty headers object and added Authorization.
-
-    // Let's stick to previous pattern but ensure we don't break multipart
-    const requestHeaders = {};
-    if (token) {
-      requestHeaders["Authorization"] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(
-      `${API_BASE_URL}/api/journal/analyze-voice${queryString}`,
-      {
-        method: "POST",
-        headers: requestHeaders,
-        body: formData,
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ detail: response.statusText }));
-      throw new Error(error.detail || error.message || "Request failed");
-    }
-
-    return await response.json();
-  },
+  getEntries: (skip = 0, limit = 10) =>
+    apiRequest(`/api/journal/entries?skip=${skip}&limit=${limit}`),
 };
 
-// Progress API
 export const progressAPI = {
-  getProgress: async () => {
-    return await apiRequest("/api/progress");
-  },
+  getProgress: () => apiRequest("/api/progress"),
 };
 
-// Emotions API
 export const emotionsAPI = {
-  getWordOfTheDay: async () => {
-    return await apiRequest("/api/emotions/word-of-the-day");
-  },
+  getWordOfTheDay: () => apiRequest("/api/emotions/word-of-the-day"),
 };
 
-// Quiz API
 export const quizAPI = {
-  getQuestions: async () => {
-    return await apiRequest("/api/quiz/questions");
-  },
+  getQuestions: () => apiRequest("/api/quiz/questions"),
 
-  submitAnswers: async (answers) => {
-    return await apiRequest("/api/quiz/submit", {
+  submitAnswers: (answers) =>
+    apiRequest("/api/quiz/submit", {
       method: "POST",
       body: JSON.stringify(answers),
-    });
-  },
+    }),
 };
 
-// Export token management functions
-export { getToken, setToken, removeToken };
+
+export const profileAPI = {
+  getProfile: () => apiRequest("/api/profile"),
+  updateProfile: (data) =>
+    apiRequest("/api/profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+};

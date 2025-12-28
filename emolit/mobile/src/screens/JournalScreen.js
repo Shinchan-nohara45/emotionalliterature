@@ -17,15 +17,20 @@ import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import Icon from "react-native-vector-icons/Ionicons";
 
+import ReflectionCard from "../components/ReflectionCard";
+
 export default function JournalScreen() {
   const [entries, setEntries] = useState([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [lastReflection, setLastReflection] = useState(null);
+
   const [formData, setFormData] = useState({
     title: "",
     content: "",
     target_language: "",
     generate_audio: false,
   });
+
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -75,18 +80,15 @@ export default function JournalScreen() {
     setIsRecording(false);
     await recording.stopAndUnloadAsync();
     const uri = recording.getURI();
-
-    // Analyze voice
     handleVoiceAnalysis(uri);
   }
 
   const handleVoiceAnalysis = async (uri) => {
     setLoading(true);
     try {
-      // Prepare file for upload
       const audioFile = {
-        uri: uri,
-        type: "audio/m4a", // Expo high quality preset uses m4a
+        uri,
+        type: "audio/m4a",
         name: "voice_entry.m4a",
       };
 
@@ -102,7 +104,6 @@ export default function JournalScreen() {
           content: response.transcript,
         }));
 
-        // If there's audio response, play it
         if (response.audio_response) {
           playAudioResponse(response.audio_response);
         }
@@ -118,7 +119,6 @@ export default function JournalScreen() {
 
   const playAudioResponse = async (base64Audio) => {
     try {
-      // Create a temporary file
       const fileUri = FileSystem.documentDirectory + "response.mp3";
       await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
         encoding: FileSystem.EncodingType.Base64,
@@ -133,17 +133,18 @@ export default function JournalScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.content.trim()) {
-      return;
-    }
+    if (!formData.content.trim()) return;
 
     setLoading(true);
     try {
-      await journalAPI.createEntry({
+      const response = await journalAPI.createEntry({
         title: formData.title || "Untitled Entry",
         content: formData.content,
         is_private: true,
       });
+
+      setLastReflection(response.reflection || null);
+
       setIsCreating(false);
       setFormData({ title: "", content: "" });
       loadJournalData();
@@ -171,7 +172,10 @@ export default function JournalScreen() {
             <>
               <TouchableOpacity
                 style={styles.createButton}
-                onPress={() => setIsCreating(true)}
+                onPress={() => {
+                  setLastReflection(null);
+                  setIsCreating(true);
+                }}
               >
                 <LinearGradient
                   colors={["#EC4899", "#EF4444"]}
@@ -194,13 +198,6 @@ export default function JournalScreen() {
                       <Text style={styles.entryContent} numberOfLines={3}>
                         {entry.content}
                       </Text>
-                      {entry.mood_score && (
-                        <View style={styles.moodBadge}>
-                          <Text style={styles.moodText}>
-                            Mood: {entry.mood_score}/10
-                          </Text>
-                        </View>
-                      )}
                     </View>
                   ))}
                 </View>
@@ -212,10 +209,15 @@ export default function JournalScreen() {
                   </Text>
                 </View>
               )}
+
+              {lastReflection && (
+                <ReflectionCard reflection={lastReflection} />
+              )}
             </>
           ) : (
             <View style={styles.formContainer}>
               <Text style={styles.formTitle}>Create Entry</Text>
+
               <TextInput
                 style={styles.input}
                 placeholder="Title (optional)"
@@ -223,8 +225,8 @@ export default function JournalScreen() {
                 onChangeText={(text) =>
                   setFormData({ ...formData, title: text })
                 }
-                placeholderTextColor="#9CA3AF"
               />
+
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="How are you feeling today?"
@@ -234,54 +236,7 @@ export default function JournalScreen() {
                 }
                 multiline
                 numberOfLines={8}
-                placeholderTextColor="#9CA3AF"
               />
-
-              <View style={styles.optionsContainer}>
-                <View style={styles.optionRow}>
-                  <Text style={styles.optionLabel}>
-                    Translate Response (e.g., es, fr):
-                  </Text>
-                  <TextInput
-                    style={styles.langInput}
-                    placeholder="en"
-                    value={formData.target_language}
-                    onChangeText={(text) =>
-                      setFormData({ ...formData, target_language: text })
-                    }
-                    autoCapitalize="none"
-                  />
-                </View>
-
-                <View style={styles.optionRow}>
-                  <Text style={styles.optionLabel}>Speak Response:</Text>
-                  <Switch
-                    value={formData.generate_audio}
-                    onValueChange={(val) =>
-                      setFormData({ ...formData, generate_audio: val })
-                    }
-                  />
-                </View>
-              </View>
-
-              <View style={styles.micContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.micButton,
-                    isRecording && styles.micButtonRecording,
-                  ]}
-                  onPress={isRecording ? stopRecording : startRecording}
-                >
-                  <Icon
-                    name={isRecording ? "stop" : "mic"}
-                    size={24}
-                    color="#FFF"
-                  />
-                  <Text style={styles.micText}>
-                    {isRecording ? "Stop Recording" : "Record Voice Entry"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
 
               <View style={styles.formButtons}>
                 <TouchableOpacity
@@ -293,6 +248,7 @@ export default function JournalScreen() {
                 >
                   <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   style={styles.saveButton}
                   onPress={handleSubmit}
@@ -312,191 +268,3 @@ export default function JournalScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
-  content: {
-    padding: 20,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  createButton: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 24,
-  },
-  createButtonGradient: {
-    padding: 16,
-    alignItems: "center",
-  },
-  createButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  entriesContainer: {
-    marginTop: 16,
-  },
-  entryCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  entryDate: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginBottom: 8,
-  },
-  entryTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  entryContent: {
-    fontSize: 14,
-    color: "#4B5563",
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  moodBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#FCE7F3",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  moodText: {
-    color: "#EC4899",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: "#9CA3AF",
-  },
-  formContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 16,
-  },
-  input: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    marginBottom: 16,
-  },
-  optionsContainer: {
-    marginBottom: 16,
-  },
-  optionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  optionLabel: {
-    fontSize: 16,
-    color: "#4B5563",
-  },
-  langInput: {
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    padding: 8,
-    width: 60,
-    textAlign: "center",
-  },
-  micContainer: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  micButton: {
-    backgroundColor: "#3B82F6",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  micButtonRecording: {
-    backgroundColor: "#EF4444",
-  },
-  micText: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  textArea: {
-    height: 150,
-    textAlignVertical: "top",
-  },
-  formButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  cancelButton: {
-    flex: 1,
-    padding: 16,
-    alignItems: "center",
-    marginRight: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  cancelButtonText: {
-    color: "#6B7280",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  saveButton: {
-    flex: 1,
-    backgroundColor: "#EC4899",
-    padding: 16,
-    alignItems: "center",
-    marginLeft: 8,
-    borderRadius: 12,
-  },
-  saveButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-});

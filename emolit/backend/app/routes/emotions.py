@@ -1,125 +1,155 @@
-from fastapi import APIRouter, HTTPException
-from app.services.emotion_analyzer import EmotionAnalyzer
-from app.models.schemas import EmotionAnalysisResponse, EmotionWord
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import List
-import random
+from datetime import datetime
+import pandas as pd
+
+from app.database import get_database
+from app.services.emotion_analyzer import EmotionAnalyzer
+from app.models.schemas import EmotionWord
+from app.core.security import get_current_user
 
 router = APIRouter()
 emotion_analyzer = EmotionAnalyzer()
 
+EXCEL_PATH = "C:\\Users\\asifs\\Downloads\\Emo-Lit\\emolit\\backend\\app\\wordsheet\\Emotions vocabulary.xlsx"
+DAILY_WORD_XP = 10
+
+# ---------- Request Model ----------
+
 class TextAnalysisRequest(BaseModel):
     text: str
 
-# Sample emotion words data
-EMOTION_WORDS_DATA = [
-    {
-        "word": "Serenity",
-        "definition": "The state of being calm, peaceful, and untroubled; a sense of tranquil contentment",
-        "example": "After weeks of stress, she finally found serenity while walking through the quiet forest.",
-        "category": "happy",
-        "level": 3,
-        "similar_words": ["tranquility", "peacefulness", "calm", "composure"],
-        "opposite_words": ["turmoil", "chaos", "agitation"],
-        "cultural_context": "Highly valued in many spiritual and philosophical traditions as a goal for emotional well-being"
-    },
-    {
-        "word": "Euphoria",
-        "definition": "A feeling of intense excitement and happiness; an overwhelming sense of well-being",
-        "example": "The team felt euphoria after winning the championship game.",
-        "category": "happy",
-        "level": 2,
-        "similar_words": ["elation", "ecstasy", "bliss", "rapture"],
-        "opposite_words": ["depression", "despair", "melancholy"],
-        "cultural_context": "Often associated with peak life experiences and achievements"
-    },
-    {
-        "word": "Melancholy",
-        "definition": "A pensive sadness; a thoughtful or gentle sadness often mixed with longing",
-        "example": "The old photograph filled her with melancholy for her childhood days.",
-        "category": "sad",
-        "level": 3,
-        "similar_words": ["wistfulness", "sorrow", "pensiveness"],
-        "opposite_words": ["joy", "cheerfulness", "elation"],
-        "cultural_context": "Historically viewed as a temperament in classical philosophy and medicine"
-    }
-]
+# ---------- Load Vocabulary Once ----------
 
-@router.post("/analyze-text", response_model=dict)
-async def analyze_text_emotions(request: TextAnalysisRequest):
-    """Analyze emotions in text"""
-    try:
-        analysis = await emotion_analyzer.analyze_text(request.text)
-        return {
-            "success": True,
-            "analysis": analysis
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+async def load_emotion_words_once(db):
+    if await db.emotion_words.count_documents({}) > 0:
+        return
+
+    df = pd.read_excel(EXCEL_PATH)
+    docs = []
+
+    for _, row in df.iterrows():
+        docs.append({
+            "word": row["word"],
+            "definition": row["definition"],
+            "example": row["example"],
+            "category": row["category"],
+            "level": int(row["level"]),
+            "similar_words": [w.strip() for w in str(row["similar_words"]).split(",")],
+            "opposite_words": [w.strip() for w in str(row["opposite_words"]).split(",")],
+            "cultural_context": row.get("cultural_context"),
+            "used": False,
+            "created_at": datetime.utcnow()
+        })
+
+    await db.emotion_words.insert_many(docs)
+
+# ---------- Analyze Text (Profile-aware) ----------
+
+@router.post("/analyze-text")
+async def analyze_text_emotions(
+    request: TextAnalysisRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    db = await get_database()
+
+    # Fetch user profile context if available
+    user_profile = await db.user_profiles.find_one(
+        {"user_id": current_user["_id"]},
+        {"_id": 0}
+    )
+
+    analysis = await emotion_analyzer.analyze_text(
+        text=request.text,
+        user_context=user_profile  # may be None, analyzer must handle
+    )
+
+    return {
+        "success": True,
+        "analysis": analysis
+    }
+
+# ---------- Word of the Day (XP + Profile-neutral) ----------
 
 @router.get("/word-of-the-day", response_model=EmotionWord)
-async def get_word_of_the_day():
-    """Get the emotion word of the day (persisted for 24 hours)"""
-    from app.database import get_database
-    from datetime import datetime
-    
-    try:
-        db = await get_database()
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        
-        # Check if we have a word for today
-        daily_word_entry = await db.daily_words.find_one({"date": today_str})
-        
-        if daily_word_entry:
-            # Return stored word
-            word_data = daily_word_entry["word_data"]
-        else:
-            # Pick new word and store it
-            word_data = random.choice(EMOTION_WORDS_DATA)
-            await db.daily_words.insert_one({
-                "date": today_str,
-                "word_data": word_data,
-                "created_at": datetime.utcnow()
-            })
-            
-        return EmotionWord(**word_data)
-        
-    except Exception as e:
-        print(f"Error getting word of the day: {e}")
-        # Fallback to random if DB fails
-        word_data = random.choice(EMOTION_WORDS_DATA)
-        return EmotionWord(**word_data)
+async def get_word_of_the_day(
+    current_user: dict = Depends(get_current_user)
+):
+    db = await get_database()
+    await load_emotion_words_once(db)
 
-@router.get("/word-of-day", response_model=EmotionWord)
-async def get_word_of_day():
-    """Get the emotion word of the day"""
-    # In production, you'd implement logic to rotate words daily
-    word_data = random.choice(EMOTION_WORDS_DATA)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    user_id = current_user["_id"]
+
+    daily_entry = await db.daily_words.find_one({"date": today})
+
+    if not daily_entry:
+        word_doc = await db.emotion_words.find_one({"used": False})
+        if not word_doc:
+            raise HTTPException(500, "No unused emotion words available")
+
+        await db.emotion_words.update_one(
+            {"_id": word_doc["_id"]},
+            {"$set": {"used": True}}
+        )
+
+        word_data = {
+            "word": word_doc["word"],
+            "definition": word_doc["definition"],
+            "example": word_doc["example"],
+            "category": word_doc["category"],
+            "level": word_doc["level"],
+            "similar_words": word_doc["similar_words"],
+            "opposite_words": word_doc["opposite_words"],
+            "cultural_context": word_doc.get("cultural_context"),
+        }
+
+        await db.daily_words.insert_one({
+            "date": today,
+            "word_data": word_data,
+            "created_at": datetime.utcnow()
+        })
+    else:
+        word_data = daily_entry["word_data"]
+
+    already_learned = await db.user_daily_words.find_one({
+        "user_id": user_id,
+        "date": today
+    })
+
+    if not already_learned:
+        await db.user_daily_words.insert_one({
+            "user_id": user_id,
+            "date": today,
+            "word": word_data["word"]
+        })
+
+        await db.user_progress.update_one(
+            {"user_id": user_id},
+            {
+                "$inc": {
+                    "words_learned": 1,
+                    "total_xp": DAILY_WORD_XP
+                },
+                "$set": {
+                    "last_activity_date": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+
     return EmotionWord(**word_data)
 
-@router.get("/words/{word}", response_model=EmotionWord)
-async def get_emotion_word(word: str):
-    """Get details about a specific emotion word"""
-    word_lower = word.lower()
-    for word_data in EMOTION_WORDS_DATA:
-        if word_data["word"].lower() == word_lower:
-            return EmotionWord(**word_data)
-    
-    raise HTTPException(status_code=404, detail="Word not found")
+# ---------- Emotion Wheel ----------
 
 @router.get("/wheel")
 async def get_emotion_wheel():
-    """Get the emotion wheel data"""
     return {
         "categories": {
-            "happy": ["joy", "serenity", "love", "optimism", "ecstasy", "vigilance", "admiration", "trust"],
-            "sad": ["sadness", "pensiveness", "grief", "melancholy", "despair", "disappointment"],
-            "angry": ["anger", "rage", "fury", "annoyance", "irritation", "hostility"],
-            "fearful": ["fear", "terror", "anxiety", "worry", "nervousness", "apprehension"],
-            "surprised": ["surprise", "amazement", "astonishment", "bewilderment"],
-            "disgusted": ["disgust", "revulsion", "contempt", "loathing"],
-            "bad": ["remorse", "guilt", "shame", "regret", "embarrassment"],
-            "anticipation": ["excitement", "eagerness", "hope", "expectation"]
-        },
-        "description": "The emotion wheel helps identify and understand different emotional states"
+            "happy": ["joy", "serenity", "love", "optimism"],
+            "sad": ["sadness", "melancholy", "grief"],
+            "angry": ["anger", "rage", "irritation"],
+            "fearful": ["fear", "anxiety"],
+            "anticipation": ["hope", "excitement"]
+        }
     }

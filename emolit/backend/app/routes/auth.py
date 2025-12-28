@@ -1,182 +1,190 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import timedelta, datetime
+from bson import ObjectId
+
 from app.database import get_database
-from app.models.user import User
 from app.models.schemas import UserCreate, UserResponse, Token, UserLogin
 from app.core.security import (
-    verify_password, 
-    get_password_hash, 
+    verify_password,
+    get_password_hash,
     create_access_token,
-    get_current_user
+    get_current_user,
 )
 from app.core.config import settings
-from bson import ObjectId
 
 router = APIRouter()
 
+# --------------------------------------------------
+# Helper: profile completeness check
+# --------------------------------------------------
+from typing import Optional, Dict
+
+def is_profile_complete(profile: Optional[Dict]) -> bool:
+    if not profile:
+        return False
+
+    required_fields = [
+        "age",
+        "gender",
+        "usage_goal",
+        "experience_level",
+    ]
+
+    return all(profile.get(field) is not None for field in required_fields)
+
+# --------------------------------------------------
+# REGISTER
+# --------------------------------------------------
+
 @router.post("/register", response_model=UserResponse)
 async def register(user: UserCreate):
-    """Register a new user"""
-    try:
-        db = await get_database()
-        
-        # Check if user already exists
-        existing_user = await db.users.find_one({"email": user.email})
-        if existing_user:
-            raise HTTPException(
-                status_code=400,
-                detail="Email already registered"
-            )
-        
-        # Create new user
-        hashed_password = get_password_hash(user.password)
-        user_data = {
-            "email": user.email,
-            "password_hash": hashed_password,
-            "full_name": user.full_name,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "is_active": True,
-            "subscription_type": "free",
-            "timezone": "UTC"
-        }
-        
-        result = await db.users.insert_one(user_data)
-        user_id = str(result.inserted_id)
-        
-        # Create user progress record
-        progress_data = {
-            "user_id": user_id,
-            "current_level": 1,
-            "total_xp": 0,
-            "current_streak": 0,
-            "longest_streak": 0,
-            "words_learned": 0,
-            "journal_entries_count": 0,
-            "achievements": [],
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
-        await db.user_progress.insert_one(progress_data)
-        
-        user_data["id"] = user_id
-        return UserResponse(
-            id=user_id,
-            email=user_data["email"],
-            full_name=user_data["full_name"],
-            created_at=user_data["created_at"],
-            is_active=user_data["is_active"],
-            subscription_type=user_data["subscription_type"]
-        )
-    except Exception as e:
-        import traceback
-        print(f"Registration error: {str(e)}")
-        traceback.print_exc()
-        if isinstance(e, HTTPException):
-            raise e
+    db = await get_database()
+
+    # Check existing user
+    if await db.users.find_one({"email": user.email}):
         raise HTTPException(
-            status_code=500,
-            detail=f"Internal Server Error: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
         )
+
+    now = datetime.utcnow()
+    hashed_password = get_password_hash(user.password)
+
+    user_doc = {
+        "email": user.email,
+        "password_hash": hashed_password,
+        "full_name": user.full_name,
+        "timezone": "UTC",
+        "is_active": True,
+        "subscription_type": "free",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    result = await db.users.insert_one(user_doc)
+    user_id = result.inserted_id
+
+    # Create user progress document
+    await db.user_progress.insert_one({
+        "user_id": user_id,
+        "current_level": 1,
+        "total_xp": 0,
+        "current_streak": 0,
+        "longest_streak": 0,
+        "words_learned": 0,
+        "journal_entries_count": 0,
+        "achievements": [],
+        "last_activity_date": None,
+        "created_at": now,
+        "updated_at": now,
+    })
+
+    return UserResponse(
+        id=str(user_id),
+        email=user.email,
+        full_name=user.full_name,
+        created_at=now,
+        is_active=True,
+        subscription_type="free",
+    )
+
+# --------------------------------------------------
+# LOGIN
+# --------------------------------------------------
 
 @router.post("/login", response_model=Token)
 async def login(user: UserLogin):
-    """Login user"""
     db = await get_database()
+
     db_user = await db.users.find_one({"email": user.email})
-    
     if not db_user or not verify_password(user.password, db_user["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
+            detail="Incorrect email or password",
         )
-    
+
     if not db_user.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+            detail="Inactive user",
         )
-    
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+
+    user_id = db_user["_id"]
+    now = datetime.utcnow()
+
     access_token = create_access_token(
-        data={"sub": str(db_user["_id"])},
-        expires_delta=access_token_expires
+        data={"sub": str(user_id)},
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
-    
-    # Update user streak
+
+    # Update streak safely
     try:
-        user_id = str(db_user["_id"])
         progress = await db.user_progress.find_one({"user_id": user_id})
-        
         if progress:
-            now = datetime.utcnow()
-            last_login = progress.get("last_login_date")
-            
-            # If last_login exists, check if it was yesterday or earlier
-            if last_login:
-                # Convert both to dates (ignore time)
-                today_date = now.date()
-                last_login_date = last_login.date()
-                
-                diff = (today_date - last_login_date).days
-                
+            last_activity = progress.get("last_activity_date")
+
+            if last_activity:
+                diff = (now.date() - last_activity.date()).days
                 if diff == 1:
-                    # Logged in yesterday, increment streak
                     await db.user_progress.update_one(
                         {"user_id": user_id},
-                        {
-                            "$inc": {"current_streak": 1},
-                            "$set": {"last_login_date": now}
-                        }
+                        {"$inc": {"current_streak": 1},
+                         "$set": {"last_activity_date": now, "updated_at": now}}
                     )
                 elif diff > 1:
-                    # Missed a day or more, reset streak
                     await db.user_progress.update_one(
                         {"user_id": user_id},
-                        {
-                            "$set": {
-                                "current_streak": 1,
-                                "last_login_date": now
-                            }
-                        }
+                        {"$set": {"current_streak": 1,
+                                  "last_activity_date": now,
+                                  "updated_at": now}}
                     )
                 else:
-                    # Same day login, just update time
                     await db.user_progress.update_one(
                         {"user_id": user_id},
-                        {"$set": {"last_login_date": now}}
+                        {"$set": {"last_activity_date": now,
+                                  "updated_at": now}}
                     )
             else:
-                # First time tracking login date
                 await db.user_progress.update_one(
                     {"user_id": user_id},
-                    {
-                        "$set": {
-                            "current_streak": 1,
-                            "last_login_date": now
-                        }
-                    }
+                    {"$set": {"current_streak": 1,
+                              "last_activity_date": now,
+                              "updated_at": now}}
                 )
-    except Exception as e:
-        print(f"Error updating streak: {e}")
-        # Don't fail login if streak update fails
-        pass
-    
+    except Exception:
+        pass  # Login must not fail due to streak issues
+
     return Token(access_token=access_token, token_type="bearer")
 
-@router.get("/me", response_model=UserResponse)
+# --------------------------------------------------
+# CURRENT USER (FULLY EXTENDED)
+# --------------------------------------------------
+
+@router.get("/me")
 async def read_users_me(current_user: dict = Depends(get_current_user)):
-    """Get current user info"""
-    return UserResponse(
-        id=str(current_user["_id"]),
-        email=current_user["email"],
-        full_name=current_user.get("full_name"),
-        created_at=current_user.get("created_at", datetime.utcnow()),
-        is_active=current_user.get("is_active", True),
-        subscription_type=current_user.get("subscription_type", "free")
+    db = await get_database()
+
+    profile = await db.user_profiles.find_one(
+        {"user_id": current_user["_id"]},
+        {"_id": 0}
     )
+
+    return {
+        "id": str(current_user["_id"]),
+        "email": current_user["email"],
+        "full_name": current_user.get("full_name"),
+        "created_at": current_user.get("created_at"),
+        "is_active": current_user.get("is_active", True),
+        "subscription_type": current_user.get("subscription_type", "free"),
+
+        "profile": profile,
+        "profile_completed": is_profile_complete(profile),
+    }
+
+# --------------------------------------------------
+# LOGOUT
+# --------------------------------------------------
 
 @router.post("/logout")
 async def logout():
-    """Logout user (client should remove token)"""
     return {"message": "Successfully logged out"}

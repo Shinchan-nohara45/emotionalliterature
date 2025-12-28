@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   View,
   Text,
@@ -6,191 +6,124 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useAuth } from '../contexts/AuthContext';
-import { useNavigation } from '@react-navigation/native';
-import { format } from 'date-fns';
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useAuth } from "../contexts/AuthContext";
+import { useNavigation } from "@react-navigation/native";
+import { format } from "date-fns";
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const navigation = useNavigation();
 
-  const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            navigation.replace('Login');
-          },
-        },
-      ]
-    );
-  };
-
   if (!user) {
     return (
       <View style={styles.loadingContainer}>
-        <Text>Loading profile...</Text>
+        <Text>Loading profile…</Text>
       </View>
     );
   }
 
+  const profile = user.profile || {};
+  const profileCompleted = user.profile_completed;
+
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: logout,
+      },
+    ]);
+  };
+
   return (
     <ScrollView style={styles.container}>
       <LinearGradient
-        colors={['#F3E8FF', '#FCE7F3', '#EEF2FF']}
+        colors={["#F3E8FF", "#FCE7F3", "#EEF2FF"]}
         style={styles.gradient}
       >
         <View style={styles.content}>
+
+          {/* Header */}
           <View style={styles.header}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U'}
+                {user.full_name?.[0]?.toUpperCase() || "U"}
               </Text>
             </View>
-            <Text style={styles.title}>Profile</Text>
-            <Text style={styles.subtitle}>Manage your account information</Text>
+            <Text style={styles.title}>{user.full_name || "Your Profile"}</Text>
+            <Text style={styles.subtitle}>
+              {profileCompleted
+                ? "Your emotional companion knows you better"
+                : "Complete your profile for better guidance"}
+            </Text>
           </View>
 
-          <View style={styles.infoCard}>
-            <Text style={styles.cardTitle}>Account Information</Text>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Full Name</Text>
-              <Text style={styles.infoValue}>{user.full_name || 'Not set'}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{user.email}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Member Since</Text>
-              <Text style={styles.infoValue}>
-                {format(new Date(user.created_at), 'MMMM d, yyyy')}
+          {/* Profile completion banner */}
+          {!profileCompleted && (
+            <View style={styles.warningCard}>
+              <Text style={styles.warningText}>
+                Your profile isn’t complete yet.  
+                Filling it helps EmoLit respond more accurately and gently.
               </Text>
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => navigation.navigate("AboutYou")}
+              >
+                <Text style={styles.primaryButtonText}>Complete Profile</Text>
+              </TouchableOpacity>
             </View>
+          )}
 
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Account Status</Text>
-              <Text style={styles.infoValue}>
-                {user.is_active ? 'Active' : 'Inactive'}
-              </Text>
-            </View>
+          {/* Account info */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Account</Text>
 
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Subscription</Text>
-              <Text style={styles.infoValue}>
-                {user.subscription_type ? user.subscription_type.charAt(0).toUpperCase() + user.subscription_type.slice(1) : 'Free'}
-              </Text>
-            </View>
+            <InfoRow label="Email" value={user.email} />
+            <InfoRow
+              label="Member since"
+              value={format(new Date(user.created_at), "MMMM d, yyyy")}
+            />
+            <InfoRow
+              label="Subscription"
+              value={user.subscription_type}
+            />
           </View>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <LinearGradient
-              colors={['#EF4444', '#EC4899']}
-              style={styles.logoutGradient}
+          {/* About You */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>About You</Text>
+
+            <InfoRow label="Age" value={profile.age ?? "—"} />
+            <InfoRow label="Gender" value={profile.gender ?? "—"} />
+            <InfoRow label="Occupation" value={profile.occupation ?? "—"} />
+            <InfoRow label="Goal" value={profile.usage_goal ?? "—"} />
+            <InfoRow label="Experience" value={profile.experience_level ?? "—"} />
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => navigation.navigate("AboutYou")}
             >
-              <Text style={styles.logoutText}>Log Out</Text>
-            </LinearGradient>
+              <Text style={styles.secondaryButtonText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Logout */}
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutText}>Log Out</Text>
           </TouchableOpacity>
+
         </View>
       </LinearGradient>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#8B5CF6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  avatarText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  infoCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-  },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 20,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1F2937',
-  },
-  logoutButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  logoutGradient: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  logoutText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
-
+const InfoRow = ({ label, value }) => (
+  <View style={styles.infoRow}>
+    <Text style={styles.infoLabel}>{label}</Text>
+    <Text style={styles.infoValue}>{String(value)}</Text>
+  </View>
+);
