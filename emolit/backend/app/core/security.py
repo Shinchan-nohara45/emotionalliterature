@@ -7,19 +7,53 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.database import get_database
 from app.core.config import settings
 
-# Password hashing
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+# Password hashing - using bcrypt for compatibility
+# Configure to avoid bug detection that causes issues with long passwords
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__ident="2b",  # Use bcrypt 2b format
+    bcrypt__rounds=12,  # Standard number of rounds
+)
 
 # JWT token handling
 security = HTTPBearer()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    import hashlib
+    # Try direct verification first
+    if pwd_context.verify(plain_password, hashed_password):
+        return True
+    
+    # If password is longer than 72 bytes, it was hashed with SHA256 first
+    if len(plain_password.encode('utf-8')) > 72:
+        password_hash = hashlib.sha256(plain_password.encode('utf-8')).hexdigest()
+        return pwd_context.verify(password_hash, hashed_password)
+    
+    return False
 
 def get_password_hash(password: str) -> str:
     """Hash a password"""
-    return pwd_context.hash(password)
+    # Bcrypt has a 72-byte limit, so we need to handle longer passwords
+    # We'll hash the password first with SHA256, then bcrypt the hash
+    import hashlib
+    password_bytes = password.encode('utf-8')
+    
+    if len(password_bytes) > 72:
+        # Hash with SHA256 first (always 64 hex chars = 32 bytes), then bcrypt the hash
+        password_hash = hashlib.sha256(password_bytes).hexdigest()
+        return pwd_context.hash(password_hash)
+    
+    # For passwords <= 72 bytes, hash directly with bcrypt
+    try:
+        return pwd_context.hash(password)
+    except ValueError as e:
+        # Fallback: if bcrypt still fails, use SHA256 pre-hash
+        if "cannot be longer than 72 bytes" in str(e):
+            password_hash = hashlib.sha256(password_bytes).hexdigest()
+            return pwd_context.hash(password_hash)
+        raise
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT access token"""

@@ -45,7 +45,8 @@ export default function RegisterScreen() {
     setLoading(false);
 
     if (result.success) {
-      navigation.replace('Main');
+      // Navigation is handled by AppNavigator state change (OnboardingGate)
+      // No need to navigate manually
     } else {
       Alert.alert('Registration Failed', result.error || 'Please try again');
     }

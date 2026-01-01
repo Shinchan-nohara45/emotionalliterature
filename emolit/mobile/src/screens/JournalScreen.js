@@ -84,36 +84,8 @@ export default function JournalScreen() {
   }
 
   const handleVoiceAnalysis = async (uri) => {
-    setLoading(true);
-    try {
-      const audioFile = {
-        uri,
-        type: "audio/m4a",
-        name: "voice_entry.m4a",
-      };
-
-      const response = await journalAPI.analyzeVoice(
-        audioFile,
-        formData.target_language,
-        formData.generate_audio
-      );
-
-      if (response.status === "success") {
-        setFormData((prev) => ({
-          ...prev,
-          content: response.transcript,
-        }));
-
-        if (response.audio_response) {
-          playAudioResponse(response.audio_response);
-        }
-
-        Alert.alert("Transcribed", "Voice entry transcribed successfully.");
-      }
-    } catch (error) {
-      console.error("Error analyzing voice:", error);
-      Alert.alert("Error", "Failed to analyze voice entry");
-    }
+    // Voice analysis feature - to be implemented in future version
+    Alert.alert("Coming Soon", "Voice transcription feature will be available soon. Please type your journal entry for now.");
     setLoading(false);
   };
 
@@ -268,3 +240,146 @@ export default function JournalScreen() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  gradient: {
+    flex: 1,
+  },
+  content: {
+    padding: 20,
+  },
+  header: {
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  createButton: {
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 24,
+  },
+  createButtonGradient: {
+    padding: 16,
+    alignItems: "center",
+  },
+  createButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  entriesContainer: {
+    gap: 16,
+  },
+  entryCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  entryDate: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 8,
+  },
+  entryTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  entryContent: {
+    fontSize: 14,
+    color: "#4B5563",
+    lineHeight: 20,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    textAlign: "center",
+  },
+  formContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  formTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 20,
+  },
+  input: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 16,
+    color: "#1F2937",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    marginBottom: 16,
+  },
+  textArea: {
+    height: 150,
+    textAlignVertical: "top",
+  },
+  formButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 10,
+    padding: 16,
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    color: "#374151",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: "#8B5CF6",
+    borderRadius: 10,
+    padding: 16,
+    alignItems: "center",
+  },
+  saveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+});

@@ -36,10 +36,11 @@ class ResponseGenerator:
 
     async def generate_response(
         self,
-        journal_entry: str,
+        text: str,
         emotion_analysis: Dict[str, Any],
-        user_profile: Optional[Dict[str, Any]] = None,
-    ) -> AIResponse:
+        user_context: Optional[Dict[str, Any]] = None,
+        recent_emotions: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """
         Generate a reflective response to a journal entry.
 
@@ -49,36 +50,42 @@ class ResponseGenerator:
             risk_level = emotion_analysis.get("risk_level", "low")
 
             if risk_level == "high":
-                return self._generate_crisis_response(user_profile)
+                crisis_response = self._generate_crisis_response(user_context)
+                return {
+                    "response": crisis_response.response,
+                    "response_type": crisis_response.response_type,
+                    "suggestions": crisis_response.suggestions,
+                    "risk_level": crisis_response.risk_level,
+                }
 
             response_text = await self._generate_supportive_response(
-                journal_entry, emotion_analysis, user_profile
+                text, emotion_analysis, user_context
             )
 
-            return AIResponse(
-                response=response_text,
-                response_type="supportive",
-                suggestions=self._generate_suggestions(emotion_analysis),
-                risk_level=risk_level,
-            )
+            return {
+                "response": response_text,
+                "response_type": "supportive",
+                "suggestions": self._generate_suggestions(emotion_analysis),
+                "risk_level": risk_level,
+            }
 
         except Exception as e:
             logger.error(f"Response generation failed: {str(e)}")
-            return AIResponse(
-                response=(
+            return {
+                "response": (
                     "Thank you for sharing this with me. "
                     "Even when things feel unclear, your experience still matters."
                 ),
-                response_type="fallback",
-                suggestions=["Take a slow breath and notice how your body feels right now."],
-                risk_level="unknown",
-            )
+                "response_type": "fallback",
+                "suggestions": ["Take a slow breath and notice how your body feels right now."],
+                "risk_level": "unknown",
+            }
 
     # ---------- Core Generators ----------
 
     async def _generate_supportive_response(
         self,
-        journal_entry: str,
+        text: str,
         emotion_analysis: Dict[str, Any],
         user_profile: Optional[Dict[str, Any]],
     ) -> str:
@@ -91,7 +98,7 @@ class ResponseGenerator:
 
         prompt = f"""
 User reflection:
-{journal_entry[:500]}
+{text[:500]}
 
 Emotional signals:
 - Emotional tone appears {qualitative_mood}

@@ -26,12 +26,25 @@ export default function HomeScreen() {
     try {
       const word = await emotionsAPI.getWordOfTheDay();
       setTodayWord(word);
-
+    } catch (error) {
+      console.error("Error loading word of the day:", error);
+      // Set a fallback word if API fails
+      setTodayWord(null);
+    }
+    
+    try {
       const progress = await progressAPI.getProgress();
       setUserProgress(progress);
     } catch (error) {
-      console.error("Error loading today's data:", error);
+      console.error("Error loading progress:", error);
+      // Set default progress if API fails
+      setUserProgress({
+        level: 1,
+        current_streak: 0,
+        total_xp: 0,
+      });
     }
+    
     setIsLoading(false);
   };
 
@@ -57,7 +70,7 @@ export default function HomeScreen() {
           <View style={styles.progressContainer}>
             <View style={styles.progressCard}>
               <Text style={styles.progressLabel}>Level</Text>
-              <Text style={styles.progressValue}>{userProgress?.current_level || 1}</Text>
+              <Text style={styles.progressValue}>{userProgress?.current_level || userProgress?.level || 1}</Text>
             </View>
             <View style={styles.progressCard}>
               <Text style={styles.progressLabel}>Streak</Text>

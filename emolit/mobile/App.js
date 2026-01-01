@@ -8,17 +8,7 @@ import MainTabs from "./src/navigation/MainTabs";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View } from "react-native";
 
-/*
-  TEMP placeholder.
-  You will replace this with a real AboutYouScreen later.
-*/
-function AboutYouPlaceholder() {
-  return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <ActivityIndicator size="large" color="#8B5CF6" />
-    </View>
-  );
-}
+import AboutYouScreen from "./src/screens/AboutYourScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -36,7 +26,7 @@ function OnboardingGate() {
   if (user.profile_completed === false) {
     return (
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="AboutYou" component={AboutYouPlaceholder} />
+        <Stack.Screen name="AboutYou" component={AboutYouScreen} />
       </Stack.Navigator>
     );
   }
@@ -45,6 +35,7 @@ function OnboardingGate() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
+      <Stack.Screen name="AboutYou" component={AboutYouScreen} />
     </Stack.Navigator>
   );
 }

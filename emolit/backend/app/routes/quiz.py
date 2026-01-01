@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 from datetime import datetime
 import random
+from bson import ObjectId
 
 from app.database import get_database
 from app.models.schemas import QuizQuestion, QuizAnswer, QuizResult
@@ -115,7 +116,7 @@ async def submit_quiz(
     return QuizResult(
         score=int((len(correct_words) / max(len(answers), 1)) * 100),
         total_questions=len(answers),
-        correct_answers=correct_words,
+        correct_answers=correct_words,  # Return array of correct words
         incorrect_answers=incorrect_words,
         xp_earned=xp_earned,
     )

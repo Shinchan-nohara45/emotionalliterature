@@ -57,20 +57,38 @@ if settings.environment == "development":
     allowed_origins.extend([
         "http://localhost:5174",
         "http://localhost:3000",
+        "http://localhost:8081",  # Expo default
+        "exp://localhost:8081",  # Expo
     ])
+    
+    # Add common local network IPs for Expo Go on physical devices
+    # Users should add their specific IP to allowed_origins in .env if needed
+    # For now, we'll allow all origins in development (less secure but easier)
 
-if not allowed_origins:
-    raise RuntimeError(
-        "CORS misconfiguration: no allowed origins set for production"
+# In development, be more permissive with CORS
+if settings.environment == "development":
+    # Allow all origins in development for easier testing with Expo Go
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allow all in development
+        allow_credentials=False,  # Can't use credentials with wildcard
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+else:
+    # Production: strict CORS
+    if not allowed_origins:
+        raise RuntimeError(
+            "CORS misconfiguration: no allowed origins set for production"
+        )
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ---------- API Versioning ----------
 

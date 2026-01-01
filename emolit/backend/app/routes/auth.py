@@ -25,12 +25,11 @@ def is_profile_complete(profile: Optional[Dict]) -> bool:
 
     required_fields = [
         "age",
-        "gender",
         "usage_goal",
         "experience_level",
     ]
 
-    return all(profile.get(field) is not None for field in required_fields)
+    return all(profile.get(field) is not None and profile.get(field) != "" for field in required_fields)
 
 # --------------------------------------------------
 # REGISTER
@@ -126,10 +125,22 @@ async def login(user: UserLogin):
             if last_activity:
                 diff = (now.date() - last_activity.date()).days
                 if diff == 1:
+                    # Increment streak and update longest if needed
+                    progress_doc = await db.user_progress.find_one({"user_id": user_id})
+                    new_streak = (progress_doc.get("current_streak", 0) or 0) + 1
+                    longest_streak = progress_doc.get("longest_streak", 0) or 0
+                    
+                    update_data = {
+                        "$inc": {"current_streak": 1},
+                        "$set": {"last_activity_date": now, "updated_at": now}
+                    }
+                    
+                    if new_streak > longest_streak:
+                        update_data["$set"]["longest_streak"] = new_streak
+                    
                     await db.user_progress.update_one(
                         {"user_id": user_id},
-                        {"$inc": {"current_streak": 1},
-                         "$set": {"last_activity_date": now, "updated_at": now}}
+                        update_data
                     )
                 elif diff > 1:
                     await db.user_progress.update_one(
@@ -169,6 +180,17 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
         {"_id": 0}
     )
 
+    # Convert profile to dict and ensure all ObjectIds are strings
+    profile_dict = None
+    if profile:
+        profile_dict = {}
+        for key, value in profile.items():
+            # Convert ObjectId to string
+            if isinstance(value, ObjectId):
+                profile_dict[key] = str(value)
+            else:
+                profile_dict[key] = value
+
     return {
         "id": str(current_user["_id"]),
         "email": current_user["email"],
@@ -177,8 +199,8 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
         "is_active": current_user.get("is_active", True),
         "subscription_type": current_user.get("subscription_type", "free"),
 
-        "profile": profile,
-        "profile_completed": is_profile_complete(profile),
+        "profile": profile_dict,
+        "profile_completed": is_profile_complete(profile_dict),
     }
 
 # --------------------------------------------------

@@ -25,24 +25,74 @@ async def load_emotion_words_once(db):
     if await db.emotion_words.count_documents({}) > 0:
         return
 
-    df = pd.read_excel(EXCEL_PATH)
-    docs = []
+    try:
+        import os
+        if not os.path.exists(EXCEL_PATH):
+            # If Excel file doesn't exist, create some default words
+            default_words = [
+                {
+                    "word": "serenity",
+                    "definition": "The state of being calm, peaceful, and untroubled",
+                    "example": "She found serenity in the quiet morning hours",
+                    "category": "positive",
+                    "level": 1,
+                    "similar_words": ["calm", "peace", "tranquility"],
+                    "opposite_words": ["anxiety", "chaos"],
+                    "cultural_context": None,
+                    "used": False,
+                    "created_at": datetime.utcnow()
+                },
+                {
+                    "word": "melancholy",
+                    "definition": "A feeling of pensive sadness, typically with no obvious cause",
+                    "example": "A deep melancholy settled over him",
+                    "category": "negative",
+                    "level": 1,
+                    "similar_words": ["sadness", "sorrow", "gloom"],
+                    "opposite_words": ["joy", "happiness"],
+                    "cultural_context": None,
+                    "used": False,
+                    "created_at": datetime.utcnow()
+                },
+            ]
+            await db.emotion_words.insert_many(default_words)
+            return
 
-    for _, row in df.iterrows():
-        docs.append({
-            "word": row["word"],
-            "definition": row["definition"],
-            "example": row["example"],
-            "category": row["category"],
-            "level": int(row["level"]),
-            "similar_words": [w.strip() for w in str(row["similar_words"]).split(",")],
-            "opposite_words": [w.strip() for w in str(row["opposite_words"]).split(",")],
-            "cultural_context": row.get("cultural_context"),
-            "used": False,
-            "created_at": datetime.utcnow()
-        })
+        df = pd.read_excel(EXCEL_PATH)
+        docs = []
 
-    await db.emotion_words.insert_many(docs)
+        for _, row in df.iterrows():
+            docs.append({
+                "word": row["word"],
+                "definition": row["definition"],
+                "example": row["example"],
+                "category": row["category"],
+                "level": int(row["level"]),
+                "similar_words": [w.strip() for w in str(row["similar_words"]).split(",")],
+                "opposite_words": [w.strip() for w in str(row["opposite_words"]).split(",")],
+                "cultural_context": row.get("cultural_context"),
+                "used": False,
+                "created_at": datetime.utcnow()
+            })
+
+        await db.emotion_words.insert_many(docs)
+    except Exception as e:
+        # If loading fails, create default words
+        default_words = [
+            {
+                "word": "serenity",
+                "definition": "The state of being calm, peaceful, and untroubled",
+                "example": "She found serenity in the quiet morning hours",
+                "category": "positive",
+                "level": 1,
+                "similar_words": ["calm", "peace", "tranquility"],
+                "opposite_words": ["anxiety", "chaos"],
+                "cultural_context": None,
+                "used": False,
+                "created_at": datetime.utcnow()
+            },
+        ]
+        await db.emotion_words.insert_many(default_words)
 
 # ---------- Analyze Text (Profile-aware) ----------
 

@@ -11,7 +11,7 @@ from app.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/profile", tags=["Profile"])
+router = APIRouter(tags=["Profile"])
 
 
 # =====================================================
@@ -32,14 +32,14 @@ def is_profile_complete(profile: dict) -> bool:
         "experience_level",
     ]
 
-    return all(profile.get(field) for field in required_fields)
+    return all(profile.get(field) is not None and profile.get(field) != "" for field in required_fields)
 
 
 # =====================================================
 # GET /api/profile
 # =====================================================
 
-@router.get("", response_model=UserProfileResponse)
+@router.get("")
 async def get_profile(current_user: dict = Depends(get_current_user)):
     db = await get_database()
     user_id = current_user["_id"]
@@ -50,7 +50,24 @@ async def get_profile(current_user: dict = Depends(get_current_user)):
     )
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        # Return empty profile instead of 404 for new users
+        return {
+            "user_id": str(user_id),
+            "age": None,
+            "gender": None,
+            "occupation": None,
+            "therapy_status": None,
+            "usage_goal": None,
+            "experience_level": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+
+    # Ensure user_id is a string, not ObjectId
+    if "user_id" in profile:
+        profile["user_id"] = str(profile["user_id"])
+    else:
+        profile["user_id"] = str(user_id)
 
     return profile
 
@@ -98,5 +115,8 @@ async def update_profile(
 
     if not profile:
         raise HTTPException(status_code=500, detail="Profile update failed")
+
+    # Ensure user_id is a string, not ObjectId
+    profile["user_id"] = str(user_id)
 
     return profile

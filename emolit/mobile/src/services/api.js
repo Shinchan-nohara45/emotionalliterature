@@ -3,15 +3,27 @@ import { Platform } from "react-native";
 
 /* ===============================
    Base URL resolution
+   
+   For Expo Go on physical devices, you need to use your computer's local IP address.
+   Find your IP: 
+   - Windows: ipconfig (look for IPv4 Address)
+   - Mac/Linux: ifconfig or ip addr
+   
+   Update LOCAL_IP below with your computer's IP address.
 ================================ */
-const FALLBACK_LOCAL_IP = "10.1.47.131";
+// TODO: Replace with your computer's local IP address (e.g., "192.168.1.100")
+const LOCAL_IP = "10.1.184.185"; // Change this to your computer's IP
 
 const API_BASE_URL =
   Platform.OS === "android"
-    ? "http://10.0.2.2:8000"
+    ? __DEV__
+      ? `http://${LOCAL_IP}:8000` // Use local IP for physical devices
+      : "http://10.0.2.2:8000" // Android emulator
     : Platform.OS === "ios"
-    ? "http://localhost:8000"
-    : `http://${FALLBACK_LOCAL_IP}:8000`;
+    ? __DEV__
+      ? `http://${LOCAL_IP}:8000` // Use local IP for physical devices
+      : "http://localhost:8000" // iOS simulator
+    : `http://${LOCAL_IP}:8000`; // Default to local IP
 
 /* ===============================
    Auth token storage
@@ -104,6 +116,27 @@ const apiRequest = async (endpoint, options = {}) => {
     return await response.json();
   } catch (err) {
     clearTimeout(timeoutId);
+    
+    // Provide better error messages
+    if (err.name === "AbortError" || err.message === "Aborted") {
+      throw new Error(
+        `Connection timeout. Please check:\n` +
+        `1. Backend server is running on port 8000\n` +
+        `2. Your computer's IP is correct: ${API_BASE_URL}\n` +
+        `3. Phone and computer are on the same WiFi network`
+      );
+    }
+    
+    if (err.message.includes("Network request failed") || err.message.includes("Failed to fetch")) {
+      throw new Error(
+        `Cannot connect to server at ${API_BASE_URL}\n` +
+        `Make sure:\n` +
+        `1. Backend is running: uvicorn app.main:app --host 0.0.0.0 --port 8000\n` +
+        `2. Update LOCAL_IP in api.js to your computer's IP address\n` +
+        `3. Both devices are on the same network`
+      );
+    }
+    
     throw err;
   }
 };
@@ -113,7 +146,7 @@ const apiRequest = async (endpoint, options = {}) => {
 ================================ */
 export const authAPI = {
   register: async (email, password, fullName) => {
-    return apiRequest("/api/auth/register", {
+    return apiRequest("/api/v1/auth/register", {
       method: "POST",
       body: JSON.stringify({
         email,
@@ -124,7 +157,7 @@ export const authAPI = {
   },
 
   login: async (email, password) => {
-    const response = await apiRequest("/api/auth/login", {
+    const response = await apiRequest("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
@@ -146,52 +179,51 @@ export const authAPI = {
     await removeToken();
     notifyAuthInvalidation();
     try {
-      await apiRequest("/api/auth/logout", { method: "POST" });
+      await apiRequest("/api/v1/auth/logout", { method: "POST" });
     } catch {}
   },
 
   getCurrentUser: async () => {
-    return apiRequest("/api/auth/me");
+    return apiRequest("/api/v1/auth/me");
   },
 };
 
 /* ===============================
-   Domain APIs (unchanged)
+   Domain APIs
 ================================ */
 export const journalAPI = {
   createEntry: (entry) =>
-    apiRequest("/api/journal/entries", {
+    apiRequest("/api/v1/journal/entries", {
       method: "POST",
       body: JSON.stringify(entry),
     }),
 
   getEntries: (skip = 0, limit = 10) =>
-    apiRequest(`/api/journal/entries?skip=${skip}&limit=${limit}`),
+    apiRequest(`/api/v1/journal/entries?skip=${skip}&limit=${limit}`),
 };
 
 export const progressAPI = {
-  getProgress: () => apiRequest("/api/progress"),
+  getProgress: () => apiRequest("/api/v1/progress"),
 };
 
 export const emotionsAPI = {
-  getWordOfTheDay: () => apiRequest("/api/emotions/word-of-the-day"),
+  getWordOfTheDay: () => apiRequest("/api/v1/emotions/word-of-the-day"),
 };
 
 export const quizAPI = {
-  getQuestions: () => apiRequest("/api/quiz/questions"),
+  getQuestions: () => apiRequest("/api/v1/quiz/questions"),
 
   submitAnswers: (answers) =>
-    apiRequest("/api/quiz/submit", {
+    apiRequest("/api/v1/quiz/submit", {
       method: "POST",
       body: JSON.stringify(answers),
     }),
 };
 
-
 export const profileAPI = {
-  getProfile: () => apiRequest("/api/profile"),
+  getProfile: () => apiRequest("/api/v1/profile"),
   updateProfile: (data) =>
-    apiRequest("/api/profile", {
+    apiRequest("/api/v1/profile", {
       method: "PATCH",
       body: JSON.stringify(data),
     }),

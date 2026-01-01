@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     s3_bucket: Optional[str] = None
 
     allowed_origins: Optional[str] = None
+    
+    # OpenRouter API for AI responses
+    openrouter_api_key: Optional[str] = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    
+    environment: str = "development"
 
     class Config:
         env_file = ".env"

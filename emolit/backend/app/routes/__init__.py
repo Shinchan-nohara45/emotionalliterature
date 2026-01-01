@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.routes import auth, journal, quiz, progress, profile
+from app.routes import auth, journal, quiz, progress, profile, emotions
 
 api_router = APIRouter()
 
@@ -9,3 +9,4 @@ api_router.include_router(journal.router, prefix="/journal", tags=["journal"])
 api_router.include_router(quiz.router, prefix="/quiz", tags=["quiz"])
 api_router.include_router(progress.router, prefix="/progress", tags=["progress"])
 api_router.include_router(profile.router, prefix="/profile", tags=["profile"])
+api_router.include_router(emotions.router, prefix="/emotions", tags=["emotions"])
