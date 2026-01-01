@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { progressAPI, journalAPI } from '../services/api';
 import { format } from 'date-fns';
+import { utcToZonedTime } from 'date-fns-tz';
 
 export default function ProgressScreen() {
   const [userProgress, setUserProgress] = useState(null);
@@ -104,7 +105,7 @@ export default function ProgressScreen() {
               {recentEntries.map((entry) => (
                 <View key={entry.id} style={styles.recentEntry}>
                   <Text style={styles.recentDate}>
-                    {format(new Date(entry.created_at), 'MMM d, yyyy')}
+                    {format(utcToZonedTime(new Date(entry.created_at), 'Asia/Kolkata'), 'MMM d, yyyy')}
                   </Text>
                   <Text style={styles.recentText}>
                     {entry.title || 'Untitled Entry'}

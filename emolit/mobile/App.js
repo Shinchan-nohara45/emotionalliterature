@@ -16,8 +16,18 @@ const Stack = createNativeStackNavigator();
    ONBOARDING GATE
 ===================================================== */
 function OnboardingGate() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#8B5CF6" />
+      </View>
+    );
+  }
+
+  // If no user, should not reach here (handled by AppNavigator)
   if (!user) {
     return null;
   }

@@ -25,13 +25,24 @@ export const AuthProvider = ({ children }) => {
      Boot-time auth check
   ================================ */
   useEffect(() => {
+    // Add a safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn("Auth check timeout - forcing loading to false");
+        setLoading(false);
+      }
+    }, 15000); // 15 second max loading time
+
     checkAuth();
 
     const unsubscribe = subscribeToAuthInvalidation(() => {
       clearAuthState();
     });
 
-    return unsubscribe;
+    return () => {
+      clearTimeout(safetyTimeout);
+      unsubscribe();
+    };
   }, []);
 
   const clearAuthState = () => {
@@ -47,20 +58,29 @@ export const AuthProvider = ({ children }) => {
   };
 
   const checkAuth = async () => {
-    const token = await getToken();
-
-    if (!token) {
-      clearAuthState();
-      setLoading(false);
-      return;
-    }
-
     try {
-      const userData = await authAPI.getCurrentUser();
-      hydrateUser(userData);
-    } catch {
+      const token = await getToken();
+
+      if (!token) {
+        clearAuthState();
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const userData = await authAPI.getCurrentUser();
+        hydrateUser(userData);
+      } catch (err) {
+        // If token is invalid or expired, clear it
+        console.log("Auth check failed:", err.message);
+        clearAuthState();
+      }
+    } catch (err) {
+      // Handle any unexpected errors
+      console.error("Error in checkAuth:", err);
       clearAuthState();
     } finally {
+      // Always set loading to false, even if there's an error
       setLoading(false);
     }
   };

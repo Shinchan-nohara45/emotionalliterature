@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { journalAPI } from "../services/api";
 import { format } from "date-fns";
+import { utcToZonedTime } from "date-fns-tz";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import Icon from "react-native-vector-icons/Ionicons";
@@ -23,6 +24,7 @@ export default function JournalScreen() {
   const [entries, setEntries] = useState([]);
   const [isCreating, setIsCreating] = useState(false);
   const [lastReflection, setLastReflection] = useState(null);
+  const [viewingEntry, setViewingEntry] = useState(null);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -122,9 +124,78 @@ export default function JournalScreen() {
       loadJournalData();
     } catch (error) {
       console.error("Error saving journal entry:", error);
+      Alert.alert("Error", "Failed to save journal entry");
     }
     setLoading(false);
   };
+
+  const viewEntry = async (entryId) => {
+    try {
+      const entry = await journalAPI.getEntry(entryId);
+      setViewingEntry(entry);
+    } catch (error) {
+      console.error("Error loading entry:", error);
+      Alert.alert("Error", "Failed to load journal entry");
+    }
+  };
+
+  if (viewingEntry) {
+    return (
+      <ScrollView style={styles.container}>
+        <LinearGradient
+          colors={["#F3E8FF", "#FCE7F3", "#EEF2FF"]}
+          style={styles.gradient}
+        >
+          <View style={styles.content}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => setViewingEntry(null)}
+            >
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+
+            <View style={styles.viewCard}>
+              <Text style={styles.viewDate}>
+                {format(utcToZonedTime(new Date(viewingEntry.created_at), "Asia/Kolkata"), "MMM d, yyyy 'at' h:mm a")}
+              </Text>
+              <Text style={styles.viewTitle}>
+                {viewingEntry.title || "Untitled Entry"}
+              </Text>
+              <Text style={styles.viewContent}>{viewingEntry.content}</Text>
+
+              {viewingEntry.mood_score && (
+                <View style={styles.moodBadge}>
+                  <Text style={styles.moodText}>
+                    Mood: {viewingEntry.mood_score}/10
+                  </Text>
+                </View>
+              )}
+
+              {viewingEntry.ai_response && (
+                <View style={styles.aiResponseCard}>
+                  <Text style={styles.aiResponseTitle}>AI Reflection</Text>
+                  <Text style={styles.aiResponseText}>
+                    {viewingEntry.ai_response.text || "No reflection available"}
+                  </Text>
+                  {viewingEntry.ai_response.suggestions &&
+                    viewingEntry.ai_response.suggestions.length > 0 && (
+                      <View style={styles.suggestionsContainer}>
+                        <Text style={styles.suggestionsTitle}>Suggestions:</Text>
+                        {viewingEntry.ai_response.suggestions.map((suggestion, idx) => (
+                          <Text key={idx} style={styles.suggestionItem}>
+                            • {suggestion}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+                </View>
+              )}
+            </View>
+          </View>
+        </LinearGradient>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -142,27 +213,49 @@ export default function JournalScreen() {
 
           {!isCreating ? (
             <>
-              <TouchableOpacity
-                style={styles.createButton}
-                onPress={() => {
-                  setLastReflection(null);
-                  setIsCreating(true);
-                }}
-              >
-                <LinearGradient
-                  colors={["#EC4899", "#EF4444"]}
-                  style={styles.createButtonGradient}
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.createButton, styles.writeButton]}
+                  onPress={() => {
+                    setLastReflection(null);
+                    setIsCreating(true);
+                  }}
                 >
-                  <Text style={styles.createButtonText}>+ Write Entry</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+                  <LinearGradient
+                    colors={["#EC4899", "#EF4444"]}
+                    style={styles.createButtonGradient}
+                  >
+                    <Text style={styles.createButtonText}>✍️ Write Entry</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.createButton, styles.voiceButton]}
+                  onPress={startRecording}
+                  disabled={isRecording}
+                >
+                  <LinearGradient
+                    colors={["#8B5CF6", "#6366F1"]}
+                    style={styles.createButtonGradient}
+                  >
+                    <Text style={styles.createButtonText}>
+                      {isRecording ? "🎤 Recording..." : "🎤 Voice Entry"}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
 
               {entries.length > 0 ? (
                 <View style={styles.entriesContainer}>
                   {entries.map((entry) => (
-                    <View key={entry.id} style={styles.entryCard}>
+                    <TouchableOpacity
+                      key={entry.id}
+                      style={styles.entryCard}
+                      onPress={() => viewEntry(entry.id)}
+                      activeOpacity={0.7}
+                    >
                       <Text style={styles.entryDate}>
-                        {format(new Date(entry.created_at), "MMM d, yyyy")}
+                        {format(utcToZonedTime(new Date(entry.created_at), "Asia/Kolkata"), "MMM d, yyyy")}
                       </Text>
                       <Text style={styles.entryTitle}>
                         {entry.title || "Untitled Entry"}
@@ -170,7 +263,7 @@ export default function JournalScreen() {
                       <Text style={styles.entryContent} numberOfLines={3}>
                         {entry.content}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               ) : (
@@ -381,5 +474,98 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  buttonRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 24,
+  },
+  writeButton: {
+    flex: 1,
+  },
+  voiceButton: {
+    flex: 1,
+  },
+  backButton: {
+    marginBottom: 16,
+    padding: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: "#8B5CF6",
+    fontWeight: "600",
+  },
+  viewCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  viewDate: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 12,
+  },
+  viewTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 16,
+  },
+  viewContent: {
+    fontSize: 16,
+    color: "#4B5563",
+    lineHeight: 24,
+    marginBottom: 20,
+  },
+  moodBadge: {
+    backgroundColor: "#F3E8FF",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    alignSelf: "flex-start",
+  },
+  moodText: {
+    color: "#8B5CF6",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  aiResponseCard: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: "#8B5CF6",
+  },
+  aiResponseTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 12,
+  },
+  aiResponseText: {
+    fontSize: 15,
+    color: "#4B5563",
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  suggestionsContainer: {
+    marginTop: 12,
+  },
+  suggestionsTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 8,
+  },
+  suggestionItem: {
+    fontSize: 14,
+    color: "#6B7280",
+    lineHeight: 20,
+    marginBottom: 4,
   },
 });

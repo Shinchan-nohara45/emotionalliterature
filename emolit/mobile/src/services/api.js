@@ -87,7 +87,8 @@ const apiRequest = async (endpoint, options = {}) => {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  // Reduced timeout to 10 seconds for faster failure detection
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -117,24 +118,27 @@ const apiRequest = async (endpoint, options = {}) => {
   } catch (err) {
     clearTimeout(timeoutId);
     
+    // Log the error for debugging
+    console.error(`API Request failed [${endpoint}]:`, err.message);
+    
     // Provide better error messages
     if (err.name === "AbortError" || err.message === "Aborted") {
-      throw new Error(
-        `Connection timeout. Please check:\n` +
+      const errorMsg = `Connection timeout. Please check:\n` +
         `1. Backend server is running on port 8000\n` +
         `2. Your computer's IP is correct: ${API_BASE_URL}\n` +
-        `3. Phone and computer are on the same WiFi network`
-      );
+        `3. Phone and computer are on the same WiFi network`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
     
     if (err.message.includes("Network request failed") || err.message.includes("Failed to fetch")) {
-      throw new Error(
-        `Cannot connect to server at ${API_BASE_URL}\n` +
+      const errorMsg = `Cannot connect to server at ${API_BASE_URL}\n` +
         `Make sure:\n` +
         `1. Backend is running: uvicorn app.main:app --host 0.0.0.0 --port 8000\n` +
         `2. Update LOCAL_IP in api.js to your computer's IP address\n` +
-        `3. Both devices are on the same network`
-      );
+        `3. Both devices are on the same network`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
     
     throw err;
@@ -200,6 +204,9 @@ export const journalAPI = {
 
   getEntries: (skip = 0, limit = 10) =>
     apiRequest(`/api/v1/journal/entries?skip=${skip}&limit=${limit}`),
+
+  getEntry: (entryId) =>
+    apiRequest(`/api/v1/journal/entries/${entryId}`),
 };
 
 export const progressAPI = {
@@ -211,7 +218,7 @@ export const emotionsAPI = {
 };
 
 export const quizAPI = {
-  getQuestions: () => apiRequest("/api/v1/quiz/questions"),
+  getQuestions: () => apiRequest("/api/v1/quiz/questions?limit=5"),
 
   submitAnswers: (answers) =>
     apiRequest("/api/v1/quiz/submit", {

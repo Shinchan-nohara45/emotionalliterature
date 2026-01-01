@@ -11,6 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigation } from "@react-navigation/native";
 import { format } from "date-fns";
+import { utcToZonedTime } from "date-fns-tz";
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
@@ -84,7 +85,7 @@ export default function ProfileScreen() {
             <InfoRow label="Email" value={user.email} />
             <InfoRow
               label="Member since"
-              value={format(new Date(user.created_at), "MMMM d, yyyy")}
+              value={format(utcToZonedTime(new Date(user.created_at), "Asia/Kolkata"), "MMMM d, yyyy")}
             />
             <InfoRow
               label="Subscription"

@@ -42,7 +42,7 @@ const EXPERIENCE_LEVEL_OPTIONS = [
 ];
 
 export default function AboutYouScreen() {
-  const { checkAuth } = useAuth();
+  const { checkAuth, isAuthenticated } = useAuth();
   const navigation = useNavigation();
 
   const [form, setForm] = useState({
@@ -79,8 +79,25 @@ export default function AboutYouScreen() {
       });
 
       await checkAuth(); // refresh profile_completed
-      Alert.alert("Success", "Profile updated successfully!");
-      navigation.goBack();
+      
+      Alert.alert("Success", "Profile updated successfully!", [
+        {
+          text: "OK",
+          onPress: () => {
+            // After checkAuth, the OnboardingGate will automatically show Main app
+            // if profile is completed. We just need to wait for the state to update.
+            // If we're in AboutYou and profile is complete, navigation will handle it.
+            if (isAuthenticated) {
+              // Try to navigate back, but if that fails, the app will auto-update
+              try {
+                navigation.goBack();
+              } catch (e) {
+                // Navigation will be handled by OnboardingGate state change
+              }
+            }
+          },
+        },
+      ]);
     } catch (err) {
       Alert.alert("Error", err.message || "Failed to update profile");
     }
@@ -106,6 +123,14 @@ export default function AboutYouScreen() {
   return (
     <LinearGradient colors={["#EEF2FF", "#FCE7F3"]} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {isAuthenticated && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>← Back to Profile</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.title}>About You</Text>
         <Text style={styles.subtitle}>
           Help EmoLit understand you better — at your pace.
@@ -280,5 +305,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#8B5CF6",
     fontWeight: "bold",
+  },
+  backButton: {
+    marginBottom: 16,
+    padding: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: "#8B5CF6",
+    fontWeight: "600",
   },
 });

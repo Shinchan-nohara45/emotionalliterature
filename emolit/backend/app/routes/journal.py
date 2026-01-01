@@ -68,19 +68,47 @@ async def create_journal_entry(
             "risk_level": emotion_analysis.get("risk_level", "low"),
             "is_private": entry.is_private,
             "word_count": len(entry.content.split()),
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "ai_response": {
+                "text": ai_response.get("response"),
+                "suggestions": ai_response.get("suggestions", []),
+                "tone": ai_response.get("response_type", "supportive"),
+            },
+            # Use IST timezone, store as UTC in MongoDB
+            "created_at": datetime.now(pytz.timezone('Asia/Kolkata')).astimezone(pytz.UTC),
+            "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).astimezone(pytz.UTC),
         }
 
         result = await db.journal_entries.insert_one(entry_data)
 
-        # Update user progress (aligned)
+        # Update user progress with daily XP limit (max 50XP per day)
+        # Use IST timezone
+        ist = pytz.timezone('Asia/Kolkata')
+        now_ist = datetime.now(ist)
+        today = now_ist.date()
+        today_start = datetime.combine(today, datetime.min.time())
+        today_start = ist.localize(today_start)
+        
+        # Count today's journal entries (convert IST to UTC for MongoDB query)
+        today_start_utc = today_start.astimezone(pytz.UTC)
+        today_end_utc = ist.localize(datetime.combine(today, datetime.max.time())).astimezone(pytz.UTC)
+        
+        today_entries = await db.journal_entries.count_documents({
+            "user_id": user_id,
+            "created_at": {
+                "$gte": today_start_utc,
+                "$lte": today_end_utc
+            }
+        })
+        
+        # Calculate XP: first entry gets 50XP, subsequent entries get 0XP (max 50XP/day)
+        xp_to_add = 50 if today_entries == 1 else 0
+        
         await db.user_progress.update_one(
             {"user_id": user_id},
             {
                 "$inc": {
                     "journal_entries_count": 1,
-                    "total_xp": 50
+                    "total_xp": xp_to_add
                 },
                 "$set": {"updated_at": datetime.utcnow()}
             }
@@ -141,4 +169,43 @@ async def get_journal_entries(
             for entry in entries
         ],
         "total": total
+    }
+
+# ---------- GET SINGLE JOURNAL ENTRY ----------
+
+@router.get("/entries/{entry_id}")
+async def get_journal_entry(
+    entry_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    db = await get_database()
+    user_id = current_user["_id"]
+
+    try:
+        entry = await db.journal_entries.find_one({
+            "_id": ObjectId(entry_id),
+            "user_id": user_id
+        })
+    except:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    # Get AI response if stored separately, or reconstruct from emotion_analysis
+    # For now, we'll return the full entry with emotion analysis
+    return {
+        "id": str(entry["_id"]),
+        "title": entry.get("title"),
+        "content": entry.get("content"),
+        "created_at": entry.get("created_at"),
+        "mood_score": entry.get("mood_score"),
+        "risk_level": entry.get("risk_level", "low"),
+        "detected_emotions": entry.get("detected_emotions", []),
+        "emotion_analysis": entry.get("emotion_analysis"),
+        "ai_response": entry.get("ai_response", {
+            "text": "",
+            "suggestions": [],
+            "tone": "supportive"
+        }),
     }

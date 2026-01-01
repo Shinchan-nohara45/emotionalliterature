@@ -20,9 +20,14 @@ async def get_quiz_questions(
 ):
     """
     Generate quiz questions from emotion vocabulary.
-    Questions reinforce emotional understanding, not testing.
+    Questions reinforce emotional understanding.
+    Always returns exactly 5 questions from Emotions vocabulary.xlsx.
     """
     db = await get_database()
+    
+    # Ensure emotion words are loaded from Excel
+    from app.routes.emotions import load_emotion_words_once
+    await load_emotion_words_once(db)
 
     query = {}
     if difficulty is not None:
@@ -31,10 +36,11 @@ async def get_quiz_questions(
     words = await db.emotion_words.find(query).to_list(length=100)
 
     if not words:
-        raise HTTPException(status_code=404, detail="No emotion words available")
+        raise HTTPException(status_code=404, detail="No emotion words available. Please ensure Emotions vocabulary.xlsx is loaded.")
 
     random.shuffle(words)
-    selected = words[:limit]
+    # Always use exactly 5 questions
+    selected = words[:5]
 
     questions = []
     for word in selected:

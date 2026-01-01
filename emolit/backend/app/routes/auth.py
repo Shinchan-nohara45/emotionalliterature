@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import timedelta, datetime
 from bson import ObjectId
+import pytz
 
 from app.database import get_database
 from app.models.schemas import UserCreate, UserResponse, Token, UserLogin
@@ -109,7 +110,9 @@ async def login(user: UserLogin):
         )
 
     user_id = db_user["_id"]
-    now = datetime.utcnow()
+    # Use IST timezone
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
 
     access_token = create_access_token(
         data={"sub": str(user_id)},
@@ -123,7 +126,16 @@ async def login(user: UserLogin):
             last_activity = progress.get("last_activity_date")
 
             if last_activity:
-                diff = (now.date() - last_activity.date()).days
+                # Convert last_activity to IST for comparison
+                if isinstance(last_activity, datetime):
+                    if last_activity.tzinfo is None:
+                        last_activity = pytz.UTC.localize(last_activity)
+                    last_activity_ist = last_activity.astimezone(ist)
+                    now_ist_date = now.date()
+                    last_activity_ist_date = last_activity_ist.date()
+                    diff = (now_ist_date - last_activity_ist_date).days
+                else:
+                    diff = (now.date() - last_activity.date()).days
                 if diff == 1:
                     # Increment streak and update longest if needed
                     progress_doc = await db.user_progress.find_one({"user_id": user_id})
@@ -132,7 +144,7 @@ async def login(user: UserLogin):
                     
                     update_data = {
                         "$inc": {"current_streak": 1},
-                        "$set": {"last_activity_date": now, "updated_at": now}
+                        "$set": {"last_activity_date": now.astimezone(pytz.UTC), "updated_at": now.astimezone(pytz.UTC)}
                     }
                     
                     if new_streak > longest_streak:
@@ -146,21 +158,21 @@ async def login(user: UserLogin):
                     await db.user_progress.update_one(
                         {"user_id": user_id},
                         {"$set": {"current_streak": 1,
-                                  "last_activity_date": now,
-                                  "updated_at": now}}
+                                  "last_activity_date": now.astimezone(pytz.UTC),
+                                  "updated_at": now.astimezone(pytz.UTC)}}
                     )
                 else:
                     await db.user_progress.update_one(
                         {"user_id": user_id},
-                        {"$set": {"last_activity_date": now,
-                                  "updated_at": now}}
+                        {"$set": {"last_activity_date": now.astimezone(pytz.UTC),
+                                  "updated_at": now.astimezone(pytz.UTC)}}
                     )
             else:
                 await db.user_progress.update_one(
                     {"user_id": user_id},
                     {"$set": {"current_streak": 1,
-                              "last_activity_date": now,
-                              "updated_at": now}}
+                              "last_activity_date": now.astimezone(pytz.UTC),
+                              "updated_at": now.astimezone(pytz.UTC)}}
                 )
     except Exception:
         pass  # Login must not fail due to streak issues
