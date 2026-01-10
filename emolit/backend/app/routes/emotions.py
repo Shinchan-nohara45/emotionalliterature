@@ -62,16 +62,22 @@ async def load_emotion_words_once(db):
         docs = []
 
         for _, row in df.iterrows():
+            # Handle missing or NaN values
+            similar_words_str = str(row.get("similar_words", "")).strip()
+            opposite_words_str = str(row.get("opposite_words", "")).strip()
+            
+            similar_words = [w.strip() for w in similar_words_str.split(",") if w.strip()] if similar_words_str and similar_words_str != "nan" else []
+            opposite_words = [w.strip() for w in opposite_words_str.split(",") if w.strip()] if opposite_words_str and opposite_words_str != "nan" else []
+            
             docs.append({
-                "word": row["word"],
-                "definition": row["definition"],
-                "example": row["example"],
-                "category": row["category"],
-                "level": int(row["level"]),
-                "similar_words": [w.strip() for w in str(row["similar_words"]).split(",")],
-                "opposite_words": [w.strip() for w in str(row["opposite_words"]).split(",")],
-                "cultural_context": row.get("cultural_context"),
-                "used": False,
+                "word": str(row.get("word", "")).strip(),
+                "definition": str(row.get("definition", "")).strip(),
+                "example": str(row.get("example", "")).strip(),
+                "category": str(row.get("category", "")).strip(),
+                "level": int(row.get("level", 1)),
+                "similar_words": similar_words,
+                "opposite_words": opposite_words,
+                "cultural_context": str(row.get("cultural_context", "")).strip() if pd.notna(row.get("cultural_context")) else None,
                 "created_at": datetime.utcnow()
             })
 
@@ -125,23 +131,26 @@ async def analyze_text_emotions(
 async def get_word_of_the_day(
     current_user: dict = Depends(get_current_user)
 ):
+    import random
+    
     db = await get_database()
     await load_emotion_words_once(db)
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
     user_id = current_user["_id"]
 
+    # Check if there's already a word for today
     daily_entry = await db.daily_words.find_one({"date": today})
 
     if not daily_entry:
-        word_doc = await db.emotion_words.find_one({"used": False})
-        if not word_doc:
-            raise HTTPException(500, "No unused emotion words available")
+        # Get all emotion words (don't filter by "used" - select random word)
+        all_words = await db.emotion_words.find({}).to_list(length=1000)
+        
+        if not all_words:
+            raise HTTPException(500, "No emotion words available. Please ensure Emotions vocabulary.xlsx is loaded.")
 
-        await db.emotion_words.update_one(
-            {"_id": word_doc["_id"]},
-            {"$set": {"used": True}}
-        )
+        # Select a random word for today
+        word_doc = random.choice(all_words)
 
         word_data = {
             "word": word_doc["word"],
@@ -149,11 +158,12 @@ async def get_word_of_the_day(
             "example": word_doc["example"],
             "category": word_doc["category"],
             "level": word_doc["level"],
-            "similar_words": word_doc["similar_words"],
-            "opposite_words": word_doc["opposite_words"],
+            "similar_words": word_doc.get("similar_words", []),
+            "opposite_words": word_doc.get("opposite_words", []),
             "cultural_context": word_doc.get("cultural_context"),
         }
 
+        # Store today's word
         await db.daily_words.insert_one({
             "date": today,
             "word_data": word_data,
@@ -162,6 +172,7 @@ async def get_word_of_the_day(
     else:
         word_data = daily_entry["word_data"]
 
+    # Track if user has learned today's word (for XP)
     already_learned = await db.user_daily_words.find_one({
         "user_id": user_id,
         "date": today

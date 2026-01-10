@@ -36,7 +36,9 @@ export default function JournalScreen() {
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const [sound, setSound] = useState(null);
+  const [recordingTimer, setRecordingTimer] = useState(null);
 
   useEffect(() => {
     loadJournalData();
@@ -69,26 +71,118 @@ export default function JournalScreen() {
         );
         setRecording(recording);
         setIsRecording(true);
+        setRecordingDuration(0);
+        
+        // Start timer
+        const timer = setInterval(() => {
+          setRecordingDuration((prev) => prev + 1);
+        }, 1000);
+        setRecordingTimer(timer);
       } else {
         Alert.alert("Permission to access microphone is required!");
       }
     } catch (err) {
       console.error("Failed to start recording", err);
+      Alert.alert("Error", "Failed to start recording. Please try again.");
     }
   }
 
   async function stopRecording() {
-    setRecording(undefined);
-    setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
-    handleVoiceAnalysis(uri);
+    if (!recording) return;
+    
+    try {
+      // Clear timer
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        setRecordingTimer(null);
+      }
+      
+      setIsRecording(false);
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecording(null);
+      
+      // Start voice analysis
+      await handleVoiceAnalysis(uri);
+    } catch (err) {
+      console.error("Failed to stop recording", err);
+      Alert.alert("Error", "Failed to stop recording. Please try again.");
+      setIsRecording(false);
+      setRecording(null);
+    }
   }
 
+  async function cancelRecording() {
+    if (!recording) return;
+    
+    try {
+      // Clear timer
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        setRecordingTimer(null);
+      }
+      
+      setIsRecording(false);
+      await recording.stopAndUnloadAsync();
+      setRecording(null);
+      setRecordingDuration(0);
+    } catch (err) {
+      console.error("Failed to cancel recording", err);
+      setIsRecording(false);
+      setRecording(null);
+      setRecordingDuration(0);
+    }
+  }
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handleVoiceAnalysis = async (uri) => {
-    // Voice analysis feature - to be implemented in future version
-    Alert.alert("Coming Soon", "Voice transcription feature will be available soon. Please type your journal entry for now.");
-    setLoading(false);
+    setLoading(true);
+    try {
+      const response = await journalAPI.analyzeVoice(uri);
+      
+      // Show success and create entry from transcript
+      Alert.alert(
+        "Voice Entry Created",
+        "Your voice entry has been transcribed and analyzed successfully!",
+        [
+          {
+            text: "View Entry",
+            onPress: () => {
+              if (response.id) {
+                viewEntry(response.id);
+              }
+              loadJournalData();
+            }
+          },
+          {
+            text: "OK",
+            onPress: () => {
+              loadJournalData();
+            }
+          }
+        ]
+      );
+      
+      // Optionally show reflection
+      if (response.reflection) {
+        setLastReflection(response.reflection);
+      }
+      
+    } catch (error) {
+      console.error("Error analyzing voice:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to analyze voice recording. Please try again."
+      );
+    } finally {
+      setLoading(false);
+      setRecordingDuration(0);
+    }
   };
 
   const playAudioResponse = async (base64Audio) => {
@@ -210,6 +304,44 @@ export default function JournalScreen() {
               Track your emotional experiences
             </Text>
           </View>
+
+          {/* Recording Overlay */}
+          {isRecording && (
+            <View style={styles.recordingOverlay}>
+              <View style={styles.recordingCard}>
+                <View style={styles.recordingIndicator}>
+                  <View style={styles.recordingDot} />
+                  <Text style={styles.recordingText}>Recording...</Text>
+                </View>
+                <Text style={styles.recordingTime}>{formatTime(recordingDuration)}</Text>
+                <View style={styles.recordingButtons}>
+                  <TouchableOpacity
+                    style={styles.cancelRecordButton}
+                    onPress={cancelRecording}
+                  >
+                    <Text style={styles.cancelRecordText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.stopRecordButton}
+                    onPress={stopRecording}
+                  >
+                    <Icon name="stop" size={24} color="#FFFFFF" />
+                    <Text style={styles.stopRecordText}>Stop</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Loading Overlay */}
+          {loading && (
+            <View style={styles.loadingOverlay}>
+              <View style={styles.loadingCard}>
+                <ActivityIndicator size="large" color="#8B5CF6" />
+                <Text style={styles.loadingText}>Processing your voice entry...</Text>
+              </View>
+            </View>
+          )}
 
           {!isCreating ? (
             <>
@@ -567,5 +699,112 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     lineHeight: 20,
     marginBottom: 4,
+  },
+  recordingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  recordingCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 30,
+    alignItems: "center",
+    minWidth: 280,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  recordingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#EF4444",
+    marginRight: 10,
+  },
+  recordingText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  recordingTime: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#8B5CF6",
+    marginBottom: 30,
+  },
+  recordingButtons: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  cancelRecordButton: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+  },
+  cancelRecordText: {
+    color: "#374151",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  stopRecordButton: {
+    flex: 1,
+    backgroundColor: "#EF4444",
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  stopRecordText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  loadingCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 30,
+    alignItems: "center",
+    minWidth: 280,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
   },
 });

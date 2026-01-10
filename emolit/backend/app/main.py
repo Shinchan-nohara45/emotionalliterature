@@ -104,6 +104,11 @@ async def root():
 async def health_check():
     return {"status": "healthy", "service": "emolit-backend"}
 
+
+# ---------- Debug Configuration ----------
+from app.core.config import settings
+print(f"Storage connection string loaded: {settings.azure_storage_connection_string is not None}")
+
 # ---------- Local Dev Entrypoint ----------
 
 if __name__ == "__main__":

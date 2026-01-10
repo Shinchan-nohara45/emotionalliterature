@@ -9,6 +9,9 @@ A modern web application for expanding emotional vocabulary and tracking emotion
 - **Emotion Journal**: Track your daily emotional experiences
 - **Progress Tracking**: Monitor your learning journey with streaks, levels, and XP
 - **Voice Journal**: Record and analyze your emotions using voice (coming soon)
+- **Work Flow of Voice**: User speaks → React Native records → Upload to Azure Blob Storage 
+→ Azure Speech Service transcribes → FastAPI receives text 
+→ AI Model processes → Response back to user
 
 ## Prerequisites
 

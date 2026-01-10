@@ -12,7 +12,7 @@ import { Platform } from "react-native";
    Update LOCAL_IP below with your computer's IP address.
 ================================ */
 // TODO: Replace with your computer's local IP address (e.g., "192.168.1.100")
-const LOCAL_IP = "10.1.184.185"; // Change this to your computer's IP
+const LOCAL_IP = "10.1.169.40"; // Change this to your computer's IP
 
 const API_BASE_URL =
   Platform.OS === "android"
@@ -207,6 +207,64 @@ export const journalAPI = {
 
   getEntry: (entryId) =>
     apiRequest(`/api/v1/journal/entries/${entryId}`),
+
+  analyzeVoice: async (audioUri) => {
+    const token = await getToken();
+    const formData = new FormData();
+    
+    // Extract filename from URI
+    const filename = audioUri.split('/').pop() || 'recording.m4a';
+    const fileType = filename.split('.').pop() || 'm4a';
+    
+    formData.append('audio', {
+      uri: audioUri,
+      type: `audio/${fileType}`,
+      name: filename,
+    });
+
+    const headers = {
+      'Content-Type': 'multipart/form-data',
+    };
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for voice analysis
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/journal/analyze-voice`, {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.status === 401) {
+        await removeToken();
+        notifyAuthInvalidation();
+        throw new Error("SESSION_EXPIRED");
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        let message = text;
+        try {
+          message = JSON.parse(text)?.detail || text;
+        } catch {}
+        throw new Error(message);
+      }
+
+      return await response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.error(`API Request failed [/api/v1/journal/analyze-voice]:`, err.message);
+      throw err;
+    }
+  },
 };
 
 export const progressAPI = {

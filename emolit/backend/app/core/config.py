@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     aws_secret_access_key: Optional[str] = None
     s3_bucket: Optional[str] = None
 
+    # Azure Blob Storage
+    azure_storage_connection_string: Optional[str] = None
+    azure_blob_container_name: str = "voice-recordings"
+
     allowed_origins: Optional[str] = None
     
     # OpenRouter API for AI responses
@@ -31,5 +35,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         extra = "allow"
+        env_file_encoding = 'utf-8'
+        case_sensitive = False  # Add this
 
 settings = Settings()

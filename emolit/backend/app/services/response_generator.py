@@ -112,6 +112,8 @@ Guidelines:
 - Reflect, do not judge
 - Avoid certainty
 - Speak gently and personally
+- Do not ask any questions in return about the user's feelings or experiences.
+- Be like a companion, not a therapist.
 - No advice that sounds like therapy
 """
 
