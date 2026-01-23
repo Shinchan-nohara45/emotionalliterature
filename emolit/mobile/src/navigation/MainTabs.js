@@ -22,14 +22,36 @@ export default function MainTabs() {
       screenOptions={{
         tabBarActiveTintColor: '#8B5CF6',
         tabBarInactiveTintColor: '#9CA3AF',
-        headerShown: false,
+        headerShown: true,
+        // tabBarStyle: {
+        //   backgroundColor: '#FFFFFF',
+        //   borderTopWidth: 1,
+        //   borderTopColor: '#E5E7EB',
+        //   paddingBottom: 5,
+        //   paddingTop: 5,
+        //   height: 60,
+        // },
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+            backgroundColor: '#F9FAFB', // softer background
+            borderTopWidth: 0,          // remove border
+            elevation: 10,              // shadow on Android
+            height: 70,                 // taller bar
+            paddingBottom: 10,
+            paddingTop: 10,
+            //android shadow
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 6,
+        },
+        headerStyle: {
+          backgroundColor: '#8B5CF6',
+          //backgroundColor: '#6366F1', //blue color
+        },
+        headerTitleStyle: {
+          color: '#fff',
+          fontWeight: '600',
+          fontSize: 30,
         },
       }}
     >

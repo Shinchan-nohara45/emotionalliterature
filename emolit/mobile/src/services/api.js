@@ -12,7 +12,7 @@ import { Platform } from "react-native";
    Update LOCAL_IP below with your computer's IP address.
 ================================ */
 // TODO: Replace with your computer's local IP address (e.g., "192.168.1.100")
-const LOCAL_IP = "10.1.169.40"; // Change this to your computer's IP
+const LOCAL_IP = "10.1.185.30"; // Change this to your computer's IP
 
 const API_BASE_URL =
   Platform.OS === "android"
